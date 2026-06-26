@@ -81,6 +81,34 @@ function addIfUseful(cards: PredictionCard[], card: PredictionCard) {
   cards.push(card);
 }
 
+function interleaveCards(cards: PredictionCard[]) {
+  const byMatch = new Map<string, PredictionCard[]>();
+  const matchOrder: string[] = [];
+
+  for (const card of cards) {
+    if (!byMatch.has(card.matchId)) {
+      byMatch.set(card.matchId, []);
+      matchOrder.push(card.matchId);
+    }
+    byMatch.get(card.matchId)?.push(card);
+  }
+
+  const interleaved: PredictionCard[] = [];
+  let addedCard = true;
+
+  while (addedCard) {
+    addedCard = false;
+    for (const matchId of matchOrder) {
+      const next = byMatch.get(matchId)?.shift();
+      if (!next) continue;
+      interleaved.push(next);
+      addedCard = true;
+    }
+  }
+
+  return interleaved;
+}
+
 export function buildPredictionCards(
   matchesInput: unknown,
   eventsInput: unknown,
@@ -93,7 +121,9 @@ export function buildPredictionCards(
   const odds = normalizeOdds(oddsInput);
   const cards: PredictionCard[] = [];
 
-  for (const match of matches.filter((item) => item.status === "live" || item.status === "upcoming").slice(0, 8)) {
+  for (const match of matches
+    .filter((item) => item.status === "live" || item.status === "upcoming" || item.status === "pending")
+    .slice(0, 8)) {
     const matchOdds = odds.find((item) => item.matchId === match.id);
     const latestEvent = events
       .filter((item) => item.matchId === match.id)
@@ -305,5 +335,5 @@ export function buildPredictionCards(
     }
   }
 
-  return cards.slice(0, 32);
+  return interleaveCards(cards).slice(0, 48);
 }

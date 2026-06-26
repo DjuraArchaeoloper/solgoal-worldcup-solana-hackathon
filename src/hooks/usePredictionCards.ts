@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { getDismissedCardIds, saveDismissedCardId } from "@/lib/storage";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getDismissedCardIds, getPicks, saveDismissedCardId } from "@/lib/storage";
 import type { CardsResponse, PredictionCard, TxlineMode } from "@/lib/txline/types";
 
 type SimulatedMoment = {
@@ -16,6 +16,22 @@ type SimulatedMoment = {
   oddsTrend: NonNullable<PredictionCard["oddsTrend"]>;
   marketType: PredictionCard["marketType"];
 };
+
+type MergePredictionDeckInput = {
+  currentDeck: PredictionCard[];
+  incomingCards: PredictionCard[];
+  dismissedIds: Set<string>;
+  pickedIds: Set<string>;
+  now?: number;
+  prependIncoming?: boolean;
+};
+
+type FetchOptions = {
+  silent?: boolean;
+};
+
+const MAX_DECK_SIZE = 80;
+const LOW_WATERMARK = 6;
 
 const simulatedMoments: SimulatedMoment[] = [
   {
@@ -92,65 +108,198 @@ const simulatedMoments: SimulatedMoment[] = [
   },
 ];
 
-function mergeCards(current: PredictionCard[], incoming: PredictionCard[], dismissed: Set<string>) {
-  const map = new Map<string, PredictionCard>();
+function hasExpired(card: PredictionCard, now: number) {
+  return Boolean(card.expiresAt && new Date(card.expiresAt).getTime() <= now);
+}
 
-  for (const card of current) {
-    if (!dismissed.has(card.id)) map.set(card.id, card);
-  }
+export function mergePredictionDeck({
+  currentDeck,
+  incomingCards,
+  dismissedIds,
+  pickedIds,
+  now = Date.now(),
+  prependIncoming = false,
+}: MergePredictionDeckInput) {
+  const hiddenIds = new Set([...dismissedIds, ...pickedIds]);
+  const seenIds = new Set<string>();
+  const nextDeck: PredictionCard[] = [];
 
-  for (const card of incoming) {
-    if (!dismissed.has(card.id)) map.set(card.id, card);
-  }
+  const addCard = (card: PredictionCard) => {
+    if (hiddenIds.has(card.id) || seenIds.has(card.id) || hasExpired(card, now)) return;
+    seenIds.add(card.id);
+    nextDeck.push(card);
+  };
 
-  return Array.from(map.values()).slice(0, 40);
+  const first = prependIncoming ? incomingCards : currentDeck;
+  const second = prependIncoming ? currentDeck : incomingCards;
+
+  for (const card of first) addCard(card);
+  for (const card of second) addCard(card);
+
+  return nextDeck.slice(0, MAX_DECK_SIZE);
+}
+
+function pickedPredictionIds(walletAddress: string) {
+  return new Set(getPicks(walletAddress).map((pick) => pick.predictionId));
+}
+
+function freshDismissedIds(walletAddress: string) {
+  return new Set(getDismissedCardIds(walletAddress));
+}
+
+function visibleDeck(deck: PredictionCard[], dismissedIds: Set<string>, pickedIds: Set<string>) {
+  const now = Date.now();
+  return deck.filter((card) => !dismissedIds.has(card.id) && !pickedIds.has(card.id) && !hasExpired(card, now));
+}
+
+function documentIsHidden() {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
+
+function makeSimulatedCard(template: SimulatedMoment, index: number): PredictionCard {
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const matchName = `${template.homeTeam} vs ${template.awayTeam}`;
+
+  return {
+    id: `demo-sim-${template.eventLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${now.getTime()}-${index}`,
+    matchId: template.matchId,
+    competition: "World Cup",
+    homeTeam: template.homeTeam,
+    awayTeam: template.awayTeam,
+    matchName,
+    minute: Math.min(90, template.minute + (index % 4)),
+    status: "live",
+    eventContext: template.eventContext,
+    eventLabel: template.eventLabel,
+    predictionText: template.predictionText,
+    odds: Number((template.odds + (index % 3) * 0.05).toFixed(2)),
+    oddsTrend: template.oddsTrend,
+    marketType: template.marketType,
+    source: "demo",
+    createdAt,
+    expiresAt: new Date(now.getTime() + 12 * 60 * 1000).toISOString(),
+    result: index % 4 === 0 ? "pending" : index % 2 === 0 ? "won" : "lost",
+  };
 }
 
 export function usePredictionCards(walletAddress?: string) {
-  const [cards, setCards] = useState<PredictionCard[]>([]);
+  const [deck, setDeck] = useState<PredictionCard[]>([]);
   const [mode, setMode] = useState<TxlineMode>("demo");
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string>();
   const [newCardBurst, setNewCardBurst] = useState(false);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const simulatedMomentIndex = useRef(0);
   const inFlight = useRef(false);
   const pollAfterMs = useRef(10000);
+  const deckRef = useRef<PredictionCard[]>([]);
+  const dismissedIdsRef = useRef<Set<string>>(new Set());
+  const pickedIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    deckRef.current = deck;
+  }, [deck]);
+
+  useEffect(() => {
+    if (!walletAddress) {
+      dismissedIdsRef.current = new Set();
+      pickedIdsRef.current = new Set();
+      const timeoutId = window.setTimeout(() => {
+        setHiddenIds(new Set());
+        setDeck([]);
+        setIsLoading(false);
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      dismissedIdsRef.current = freshDismissedIds(walletAddress);
+      pickedIdsRef.current = pickedPredictionIds(walletAddress);
+      setHiddenIds(new Set([...dismissedIdsRef.current, ...pickedIdsRef.current]));
+      setDeck((current) =>
+        mergePredictionDeck({
+          currentDeck: current,
+          incomingCards: [],
+          dismissedIds: dismissedIdsRef.current,
+          pickedIds: pickedIdsRef.current,
+        }),
+      );
+      setIsLoading(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [walletAddress]);
+
+  const activeCard = useMemo(() => deck.find((card) => !hiddenIds.has(card.id)), [deck, hiddenIds]);
+
+  const syncStoredIds = useCallback((address: string) => {
+    dismissedIdsRef.current = freshDismissedIds(address);
+    pickedIdsRef.current = pickedPredictionIds(address);
+    setHiddenIds(new Set([...dismissedIdsRef.current, ...pickedIdsRef.current]));
+
+    return {
+      dismissedIds: dismissedIdsRef.current,
+      pickedIds: pickedIdsRef.current,
+    };
+  }, []);
 
   const showNewCardBurst = useCallback(() => {
     setNewCardBurst(true);
     window.setTimeout(() => setNewCardBurst(false), 1300);
   }, []);
 
-  const fetchCards = useCallback(async () => {
-    if (!walletAddress || inFlight.current || document.visibilityState === "hidden") return;
+  const fetchCards = useCallback(
+    async ({ silent = false }: FetchOptions = {}) => {
+      if (!walletAddress || inFlight.current || documentIsHidden()) return;
 
-    inFlight.current = true;
-    setLoading((current) => (cards.length ? current : true));
+      inFlight.current = true;
+      const hasCurrentDeck = deckRef.current.length > 0;
+      setIsLoading(!silent && !hasCurrentDeck);
+      setIsRefreshing(silent || hasCurrentDeck);
 
-    try {
-      const response = await fetch("/api/txline/cards", { cache: "no-store" });
-      const data = (await response.json()) as CardsResponse;
-      const dismissed = new Set(getDismissedCardIds(walletAddress));
-      pollAfterMs.current = data.pollAfterMs ?? (data.mode === "demo" ? 10000 : 30000);
+      try {
+        const response = await fetch("/api/txline/cards", { cache: "no-store" });
+        if (!response.ok) throw new Error(`Cards request failed with ${response.status}`);
 
-      setMode(data.mode);
-      setLastUpdated(data.lastUpdated);
-      setCards((current) => {
-        const now = Date.now();
-        const active = current.filter((card) => !card.expiresAt || new Date(card.expiresAt).getTime() > now);
-        const next = mergeCards(active, data.cards, dismissed);
-        if (next.length > current.length) {
-          showNewCardBurst();
-        }
-        return next;
-      });
-    } catch {
-      setCards((current) => current);
-    } finally {
-      inFlight.current = false;
-      setLoading(false);
-    }
-  }, [cards.length, showNewCardBurst, walletAddress]);
+        const data = (await response.json()) as CardsResponse;
+        const { dismissedIds, pickedIds } = syncStoredIds(walletAddress);
+        pollAfterMs.current = data.pollAfterMs ?? (data.mode === "demo" ? 10000 : 30000);
+
+        setMode(data.mode);
+        setLastUpdated(data.lastUpdated);
+        setDeck((current) => {
+          const next = mergePredictionDeck({
+            currentDeck: current,
+            incomingCards: data.cards,
+            dismissedIds,
+            pickedIds,
+          });
+          if (next.length > visibleDeck(current, dismissedIds, pickedIds).length) {
+            showNewCardBurst();
+          }
+          return next;
+        });
+      } catch {
+        setDeck((current) =>
+          mergePredictionDeck({
+            currentDeck: current,
+            incomingCards: [],
+            dismissedIds: dismissedIdsRef.current,
+            pickedIds: pickedIdsRef.current,
+          }),
+        );
+      } finally {
+        inFlight.current = false;
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [showNewCardBurst, syncStoredIds, walletAddress],
+  );
 
   useEffect(() => {
     if (!walletAddress) return;
@@ -159,15 +308,15 @@ export function usePredictionCards(walletAddress?: string) {
 
     const schedule = (delay = 0) => {
       timeoutId = window.setTimeout(async () => {
-        await fetchCards();
-        if (document.visibilityState !== "hidden") {
+        await fetchCards({ silent: deckRef.current.length > 0 });
+        if (!documentIsHidden()) {
           schedule(pollAfterMs.current);
         }
       }, delay);
     };
 
     const resume = () => {
-      if (document.visibilityState === "visible") {
+      if (!documentIsHidden()) {
         if (timeoutId) window.clearTimeout(timeoutId);
         schedule(0);
       }
@@ -186,61 +335,64 @@ export function usePredictionCards(walletAddress?: string) {
 
   const dismissCard = useCallback(
     (cardId: string) => {
-      if (!walletAddress) return;
+      if (!walletAddress || dismissedIdsRef.current.has(cardId)) return;
+
       saveDismissedCardId(walletAddress, cardId);
-      setCards((current) => current.filter((card) => card.id !== cardId));
+      dismissedIdsRef.current = new Set([...dismissedIdsRef.current, cardId]);
+      setHiddenIds(new Set([...dismissedIdsRef.current, ...pickedIdsRef.current]));
+
+      const nextDeck = visibleDeck(deckRef.current, dismissedIdsRef.current, pickedIdsRef.current);
+      setDeck(nextDeck);
+
+      if (nextDeck.length <= LOW_WATERMARK) {
+        void fetchCards({ silent: true });
+      }
     },
-    [walletAddress],
+    [fetchCards, walletAddress],
   );
 
   const simulateMatchEvent = useCallback(() => {
+    if (!walletAddress) return;
+
     const template = simulatedMoments[simulatedMomentIndex.current % simulatedMoments.length];
     simulatedMomentIndex.current += 1;
+    const card = makeSimulatedCard(template, simulatedMomentIndex.current);
+    const createdAt = new Date().toISOString();
 
-    const now = new Date();
-    const createdAt = now.toISOString();
-    const matchName = `${template.homeTeam} vs ${template.awayTeam}`;
-    const card: PredictionCard = {
-      id: `demo-sim-${template.eventLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${now.getTime()}`,
-      matchId: template.matchId,
-      competition: "World Cup",
-      homeTeam: template.homeTeam,
-      awayTeam: template.awayTeam,
-      matchName,
-      minute: Math.min(90, template.minute + (simulatedMomentIndex.current % 3)),
-      status: "live",
-      eventContext: template.eventContext,
-      eventLabel: template.eventLabel,
-      predictionText: template.predictionText,
-      odds: Number((template.odds + (simulatedMomentIndex.current % 2) * 0.06).toFixed(2)),
-      oddsTrend: template.oddsTrend,
-      marketType: template.marketType,
-      source: "demo",
-      createdAt,
-      expiresAt: new Date(now.getTime() + 12 * 60 * 1000).toISOString(),
-      result:
-        simulatedMomentIndex.current % 4 === 0
-          ? "pending"
-          : simulatedMomentIndex.current % 2 === 0
-            ? "won"
-            : "lost",
-    };
-
+    const { dismissedIds, pickedIds } = syncStoredIds(walletAddress);
     setMode("demo");
     setLastUpdated(createdAt);
-    setLoading(false);
-    setCards((current) => [card, ...current].slice(0, 40));
+    setIsLoading(false);
+    setDeck((current) =>
+      mergePredictionDeck({
+        currentDeck: current,
+        incomingCards: [card],
+        dismissedIds,
+        pickedIds,
+        prependIncoming: true,
+      }),
+    );
     showNewCardBurst();
-  }, [showNewCardBurst]);
+  }, [showNewCardBurst, syncStoredIds, walletAddress]);
+
+  const remainingCount = deck.length;
+  const isEmpty = !isLoading && remainingCount === 0;
 
   return {
-    cards,
-    mode,
-    loading,
-    lastUpdated,
-    newCardBurst,
+    activeCard,
+    cards: deck,
+    deck,
     dismissCard,
+    isEmpty,
+    isLoading,
+    isRefreshing,
+    lastUpdated,
+    loading: isLoading,
+    mode,
+    newCardBurst,
     refresh: fetchCards,
+    refreshCards: fetchCards,
+    remainingCount,
     simulateMatchEvent,
   };
 }

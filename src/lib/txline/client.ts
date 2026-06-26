@@ -16,14 +16,18 @@ type RequestOptions = {
 };
 
 type GuestSessionResponse = {
+  accessToken?: string;
   jwt?: string;
   token?: string;
-  accessToken?: string;
-  expiresAt?: string;
 };
 
+function envText(name: string) {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+}
+
 export function hasTxlineCredentials() {
-  return Boolean((process.env.TXLINE_API_TOKEN ?? process.env.TXLINE_API_KEY) && process.env.TXLINE_BASE_URL);
+  return Boolean((envText("TXLINE_API_TOKEN") ?? envText("TXLINE_API_KEY")) && envText("TXLINE_BASE_URL"));
 }
 
 export function isForcedDemoMode() {
@@ -31,7 +35,7 @@ export function isForcedDemoMode() {
 }
 
 function baseUrl() {
-  const value = process.env.TXLINE_BASE_URL?.replace(/\/$/, "");
+  const value = envText("TXLINE_BASE_URL")?.replace(/\/$/, "");
   if (!value) {
     throw new TxlineError("TXLINE_BASE_URL is not configured.", "CONFIG_MISSING");
   }
@@ -39,11 +43,34 @@ function baseUrl() {
 }
 
 function apiToken() {
-  const value = process.env.TXLINE_API_TOKEN ?? process.env.TXLINE_API_KEY;
+  const value = envText("TXLINE_API_TOKEN") ?? envText("TXLINE_API_KEY");
   if (!value) {
     throw new TxlineError("TXLINE_API_TOKEN is not configured.", "CONFIG_MISSING");
   }
   return value;
+}
+
+async function getGuestSessionToken() {
+  return getCached("txline:guest-session", 20 * 60 * 1000, async () => {
+    const url = withQuery(TXLINE_ENDPOINTS.authGuestStart);
+    const data = await fetchJson<GuestSessionResponse>(
+      url,
+      {
+        cache: "no-store",
+        headers: { accept: "application/json" },
+        method: "POST",
+      },
+      5000,
+    );
+
+    const token = data.token ?? data.jwt ?? data.accessToken;
+    if (!token) {
+      throw new TxlineError("TxLINE guest session response did not include a token.", "AUTH_FAILED");
+    }
+
+    txlineLogger.debug("Guest session token refreshed");
+    return token;
+  });
 }
 
 function withQuery(path: string, query?: RequestOptions["query"]) {
@@ -76,7 +103,12 @@ async function fetchJson<T>(url: string, init: RequestInit, timeoutMs: number): 
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      const code = response.status === 429 ? "RATE_LIMITED" : "REQUEST_FAILED";
+      const code =
+        response.status === 401 || response.status === 403
+          ? "AUTH_FAILED"
+          : response.status === 429
+            ? "RATE_LIMITED"
+            : "REQUEST_FAILED";
       throw new TxlineError(
         `TxLINE request failed with ${response.status}: ${body.slice(0, 180)}`,
         code,
@@ -95,29 +127,6 @@ async function fetchJson<T>(url: string, init: RequestInit, timeoutMs: number): 
   }
 }
 
-async function getGuestSessionToken() {
-  return getCached("txline:guest-session", 20 * 60 * 1000, async () => {
-    const url = withQuery(TXLINE_ENDPOINTS.authGuestStart);
-    const data = await fetchJson<GuestSessionResponse>(
-      url,
-      {
-        cache: "no-store",
-        headers: { accept: "application/json" },
-        method: "POST",
-      },
-      5000,
-    );
-
-    const token = data.jwt ?? data.token ?? data.accessToken;
-    if (!token) {
-      throw new TxlineError("TxLINE guest session response did not include a token.", "AUTH_FAILED");
-    }
-
-    txlineLogger.debug("Guest session token refreshed");
-    return token;
-  });
-}
-
 async function requestWithRetries<T>(path: string, options: RequestOptions) {
   const retries = options.retries ?? 2;
   let lastError: unknown;
@@ -134,7 +143,7 @@ async function requestWithRetries<T>(path: string, options: RequestOptions) {
           headers: {
             accept: "application/json",
             authorization: `Bearer ${token}`,
-            "x-api-token": apiToken(),
+            "X-Api-Token": apiToken(),
           },
           method: "GET",
         },

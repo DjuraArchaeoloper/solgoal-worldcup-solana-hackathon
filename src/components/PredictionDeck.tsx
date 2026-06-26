@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ComponentType } from "react";
+import { useRef, useState, type ComponentType } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BarChart3, Clock3, History, Info, Radio, Sparkles } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -35,9 +35,21 @@ export default function PredictionDeck() {
   const walletAddress = publicKey?.toBase58();
   const { picks, addPick } = usePicks(walletAddress);
   const summary = useSportsIQ(picks);
-  const { cards, mode, loading, lastUpdated, newCardBurst, dismissCard, refresh, simulateMatchEvent } =
-    usePredictionCards(walletAddress);
-  const activeCard = cards[0];
+  const {
+    activeCard,
+    isEmpty,
+    isLoading,
+    isRefreshing,
+    lastUpdated,
+    mode,
+    newCardBurst,
+    remainingCount,
+    dismissCard,
+    refreshCards,
+    simulateMatchEvent,
+  } = usePredictionCards(walletAddress);
+  const swipingRef = useRef(false);
+  const [isSwiping, setIsSwiping] = useState(false);
   const [exitDirection, setExitDirection] = useState<"left" | "right">("right");
   const showDemoControl =
     mode === "demo" ||
@@ -45,10 +57,17 @@ export default function PredictionDeck() {
     process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === "true";
 
   function handleDecision(decision: PredictionDecision) {
-    if (!activeCard) return;
+    if (!activeCard || swipingRef.current) return;
+
+    swipingRef.current = true;
+    setIsSwiping(true);
     setExitDirection(decision === "LOCK_IT" ? "right" : "left");
     addPick(activeCard, decision);
     dismissCard(activeCard.id);
+    window.setTimeout(() => {
+      swipingRef.current = false;
+      setIsSwiping(false);
+    }, 340);
   }
 
   return (
@@ -91,7 +110,7 @@ export default function PredictionDeck() {
           </MotionDiv>
         ) : null}
 
-        {loading ? (
+        {isLoading && !activeCard ? (
           <LoadingCard />
         ) : activeCard ? (
           <AnimatePresence custom={exitDirection} mode="popLayout">
@@ -103,7 +122,11 @@ export default function PredictionDeck() {
             />
           </AnimatePresence>
         ) : (
-          <EmptyState onRefresh={() => void refresh()} />
+          <EmptyState
+            lastUpdated={lastUpdated}
+            onRefresh={() => void refreshCards({ silent: true })}
+            refreshing={isRefreshing || isEmpty}
+          />
         )}
 
         {showDemoControl ? (
@@ -119,7 +142,7 @@ export default function PredictionDeck() {
       </div>
 
       <div className="mt-4">
-        <SwipeButtons disabled={!activeCard} onDecision={handleDecision} />
+        <SwipeButtons disabled={!activeCard || isSwiping} onDecision={handleDecision} />
       </div>
 
       <nav className="mt-4 grid grid-cols-3 gap-2">
@@ -141,7 +164,9 @@ export default function PredictionDeck() {
 
       <p className="mt-4 flex items-center justify-center gap-2 text-center text-xs font-semibold text-white/36">
         <Clock3 size={13} />
-        New live cards can appear every few seconds during a match.
+        {remainingCount > 1
+          ? `${remainingCount} cards ready. New live cards can appear every few seconds.`
+          : "Waiting for the next live match moment."}
       </p>
     </main>
   );
