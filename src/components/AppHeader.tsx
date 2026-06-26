@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { LogOut, Zap } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { shortenWallet } from "@/lib/wallet";
+import Image from "next/image";
 
 export default function AppHeader() {
   const { publicKey, disconnect } = useWallet();
@@ -11,9 +12,18 @@ export default function AppHeader() {
 
   return (
     <header className="flex items-center justify-between gap-3 px-4 py-4">
-      <Link className="flex items-center gap-2 text-lg font-black text-white" href="/">
+      <Link
+        className="flex items-center gap-2 text-lg font-black text-white"
+        href="/"
+      >
         <span className="flex size-8 items-center justify-center rounded-full bg-emerald-300 text-black">
-          <Zap size={17} />
+          <Image
+            src="/favicon-32x32.png"
+            alt="SolGoal"
+            width={32}
+            height={32}
+            style={{ borderRadius: "50%" }}
+          />
         </span>
         SolGoal
       </Link>
