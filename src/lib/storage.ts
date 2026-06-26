@@ -7,7 +7,7 @@ function safeWallet(walletAddress: string) {
 }
 
 function keyFor(walletAddress: string, key: string) {
-  return `swipeodds:${safeWallet(walletAddress)}:${key}`;
+  return `solgoal:${safeWallet(walletAddress)}:${key}`;
 }
 
 function readValue(key: string) {

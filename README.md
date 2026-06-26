@@ -1,10 +1,10 @@
-# SwipeOdds
+# SolGoal
 
 TxLINE World Cup Hackathon submission for the **Consumer & Fan Experiences** track.
 
-SwipeOdds is the fastest way to test football intuition during a live World Cup match. Fans connect a Solana wallet, swipe through live prediction cards powered by TxLINE fixtures, scores, events, and consensus odds, and build a Sports IQ.
+SolGoal is the fastest way to test football intuition during a live World Cup match. Fans connect a Solana wallet, swipe through live prediction cards powered by TxLINE fixtures, scores, events, and consensus odds, and build a Sports IQ.
 
-SwipeOdds is not a betting platform. It has no deposits, wagers, cash-out, trading, or real-money prediction mechanics.
+SolGoal is not a betting platform. It has no deposits, wagers, cash-out, trading, or real-money prediction mechanics.
 
 ## Problem
 
@@ -12,7 +12,7 @@ World Cup data is rich, but fan products often turn it into dense tables and fee
 
 ## Solution
 
-SwipeOdds turns live TxLINE data into simple prediction cards:
+SolGoal turns live TxLINE data into simple prediction cards:
 
 - `LOCK IT` when the fan agrees
 - `NO WAY` when the fan disagrees
@@ -60,9 +60,9 @@ src/lib/txline
 
 ## User Flow
 
-1. Fan opens SwipeOdds.
+1. Fan opens SolGoal.
 2. Fan connects Phantom, Solflare, or another Solana wallet supported by Solana Wallet Adapter.
-3. SwipeOdds fetches prediction cards from `/api/txline/cards`.
+3. SolGoal fetches prediction cards from `/api/txline/cards`.
 4. Fan swipes or taps `LOCK IT` / `NO WAY`.
 5. Picks are saved in localStorage by wallet address.
 6. Results show Sports IQ, accuracy, streak, pending picks, and leaderboard preview.
@@ -70,7 +70,7 @@ src/lib/txline
 
 ## TxLINE Integration Flow
 
-SwipeOdds uses the official TxLINE World Cup and Quickstart documentation:
+SolGoal uses the official TxLINE World Cup and Quickstart documentation:
 
 - `POST {TXLINE_BASE_URL}/auth/guest/start`
 - `GET {TXLINE_BASE_URL}/api/fixtures/snapshot?startEpochDay={epochDay}`
@@ -217,7 +217,7 @@ Do not expose `TXLINE_API_TOKEN` as a public environment variable.
 
 ## Business Model
 
-SwipeOdds can expand commercially without betting mechanics:
+SolGoal can expand commercially without betting mechanics:
 
 - sponsored daily challenges
 - premium Sports IQ analytics
@@ -250,7 +250,7 @@ What was difficult:
 
 Most useful schema:
 
-- The odds snapshot schema is the most useful for SwipeOdds because match-winner, total-goals, both-teams-to-score, and next-goal data create clear one-swipe decisions.
+- The odds snapshot schema is the most useful for SolGoal because match-winner, total-goals, both-teams-to-score, and next-goal data create clear one-swipe decisions.
 
 ## Future Roadmap
 
@@ -269,4 +269,4 @@ Most useful schema:
 
 ## Legal Disclaimer
 
-SwipeOdds is a football prediction game, not a betting platform. It does not accept deposits, wagers, or real-money predictions. It has no cash-out, trading, or payment mechanics.
+SolGoal is a football prediction game, not a betting platform. It does not accept deposits, wagers, or real-money predictions. It has no cash-out, trading, or payment mechanics.

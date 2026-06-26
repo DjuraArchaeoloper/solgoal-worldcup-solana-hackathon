@@ -20,7 +20,7 @@ export default function WalletConnectScreen() {
             <span className="flex size-9 items-center justify-center rounded-full bg-emerald-400 text-black">
               <Flame size={18} />
             </span>
-            SwipeOdds
+            SolGoal
           </div>
           <span className="rounded-full border border-emerald-200/20 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
             Live football data
@@ -29,7 +29,7 @@ export default function WalletConnectScreen() {
 
         <div className="space-y-5">
           <div className="space-y-3">
-            <h1 className="text-5xl font-black leading-[0.95] text-white">SwipeOdds</h1>
+            <h1 className="text-5xl font-black leading-[0.95] text-white">SolGoal</h1>
             <p className="text-xl font-semibold leading-7 text-emerald-100">
               The fastest way to test your football intuition.
             </p>

@@ -15,7 +15,7 @@ export default function AppHeader() {
         <span className="flex size-8 items-center justify-center rounded-full bg-emerald-300 text-black">
           <Zap size={17} />
         </span>
-        SwipeOdds
+        SolGoal
       </Link>
 
       <div className="flex items-center gap-2">

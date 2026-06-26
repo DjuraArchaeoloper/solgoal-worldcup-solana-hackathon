@@ -4,7 +4,7 @@ import "./globals.css";
 import WalletProvider from "@/components/WalletProvider";
 
 export const metadata: Metadata = {
-  title: "SwipeOdds",
+  title: "SolGoal",
   description: "The fastest way to test your football intuition.",
 };
 
