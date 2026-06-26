@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useRef, useState, type ComponentType } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BarChart3, Clock3, History, Info, Radio, Sparkles } from "lucide-react";
+import {
+  BarChart3,
+  Clock3,
+  History,
+  Info,
+  Radio,
+  Sparkles,
+} from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { usePicks } from "@/hooks/usePicks";
 import { usePredictionCards } from "@/hooks/usePredictionCards";
@@ -51,10 +58,7 @@ export default function PredictionDeck() {
   const swipingRef = useRef(false);
   const [isSwiping, setIsSwiping] = useState(false);
   const [exitDirection, setExitDirection] = useState<"left" | "right">("right");
-  const showDemoControl =
-    mode === "demo" ||
-    process.env.NODE_ENV === "development" ||
-    process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === "true";
+  const showDemoControl = mode === "demo";
 
   function handleDecision(decision: PredictionDecision) {
     if (!activeCard || swipingRef.current) return;
@@ -91,8 +95,13 @@ export default function PredictionDeck() {
           ["Streak", summary.streak],
           ["Sports IQ", summary.sportsIQ ?? "Pending"],
         ].map(([label, value]) => (
-          <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-white/38">{label}</p>
+          <div
+            key={label}
+            className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-3"
+          >
+            <p className="text-[11px] font-bold uppercase tracking-wide text-white/38">
+              {label}
+            </p>
             <p className="mt-1 text-lg font-black text-white">{value}</p>
           </div>
         ))}
@@ -142,7 +151,10 @@ export default function PredictionDeck() {
       </div>
 
       <div className="mt-4">
-        <SwipeButtons disabled={!activeCard || isSwiping} onDecision={handleDecision} />
+        <SwipeButtons
+          disabled={!activeCard || isSwiping}
+          onDecision={handleDecision}
+        />
       </div>
 
       <nav className="mt-4 grid grid-cols-3 gap-2">
