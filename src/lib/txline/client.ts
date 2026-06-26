@@ -23,7 +23,7 @@ type GuestSessionResponse = {
 };
 
 export function hasTxlineCredentials() {
-  return Boolean(process.env.TXLINE_API_KEY && process.env.TXLINE_BASE_URL);
+  return Boolean((process.env.TXLINE_API_TOKEN ?? process.env.TXLINE_API_KEY) && process.env.TXLINE_BASE_URL);
 }
 
 export function isForcedDemoMode() {
@@ -39,9 +39,9 @@ function baseUrl() {
 }
 
 function apiToken() {
-  const value = process.env.TXLINE_API_KEY;
+  const value = process.env.TXLINE_API_TOKEN ?? process.env.TXLINE_API_KEY;
   if (!value) {
-    throw new TxlineError("TXLINE_API_KEY is not configured.", "CONFIG_MISSING");
+    throw new TxlineError("TXLINE_API_TOKEN is not configured.", "CONFIG_MISSING");
   }
   return value;
 }
